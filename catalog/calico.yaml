@@ -23,6 +23,13 @@ detect:
     namespace: calico-system
     name: calico-node
     container: calico-node
+# From Calico 3.32 the chart no longer carries the CRDs of the resources it
+# creates; upstream installs them first from this chart. The operator keeps
+# them up to date afterwards.
+crdChart:
+  name: crd.projectcalico.org.v1
+  release: calico-crds
+  versions: ">= 3.32.0"
 helmOptions:
   wait: true
   timeout: 15m0s

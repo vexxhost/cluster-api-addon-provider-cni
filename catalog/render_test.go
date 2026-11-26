@@ -130,6 +130,14 @@ func TestCatalogsRenderWithUpstreamCharts(t *testing.T) {
 				kube := oldestSupported(c, m.version)
 				g.Expect(kube).ToNot(BeEmpty(), "no Kubernetes version in range")
 
+				if crd := c.CRDChartFor(m.version); crd != nil {
+					crdChart, err := repo.Fetch(crd.Name, m.Version)
+					g.Expect(err).ToNot(HaveOccurred(), "the CRD chart must exist for every version that needs it")
+					manifest, err := charts.Render(crdChart, crd.Release, c.Release.Namespace, kube, nil)
+					g.Expect(err).ToNot(HaveOccurred())
+					g.Expect(manifest).To(ContainSubstring("kind: CustomResourceDefinition"))
+				}
+
 				for _, in := range []RenderInput{renderInput(false, ""), renderInput(true, "registry.example.com/mirror")} {
 					values, err := c.Values(m.version, in, nil)
 					g.Expect(err).ToNot(HaveOccurred())

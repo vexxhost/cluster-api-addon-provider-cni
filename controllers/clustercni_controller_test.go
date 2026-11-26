@@ -81,17 +81,26 @@ func newClusterCNI(ctx context.Context, t *testing.T, cluster *clusterv1.Cluster
 }
 
 func getHRP(ctx context.Context, g Gomega, cluster *clusterv1.Cluster) *helmv1.HelmReleaseProxy {
+	return getNamedHRP(ctx, g, cluster, cluster.Name+"-cni")
+}
+
+func getNamedHRP(ctx context.Context, g Gomega, cluster *clusterv1.Cluster, name string) *helmv1.HelmReleaseProxy {
 	hrp := &helmv1.HelmReleaseProxy{}
-	g.Expect(envClient.Get(ctx, client.ObjectKey{Namespace: cluster.Namespace, Name: cluster.Name + "-cni"}, hrp)).To(Succeed())
+	g.Expect(envClient.Get(ctx, client.ObjectKey{Namespace: cluster.Namespace, Name: name}, hrp)).To(Succeed())
 	return hrp
 }
 
 // markDeployed does what CAAPH does once a release is deployed.
 func markDeployed(ctx context.Context, t *testing.T, cluster *clusterv1.Cluster, version string) {
 	t.Helper()
+	markNamedDeployed(ctx, t, cluster, cluster.Name+"-cni", version)
+}
+
+func markNamedDeployed(ctx context.Context, t *testing.T, cluster *clusterv1.Cluster, name, version string) {
+	t.Helper()
 	g := NewWithT(t)
 	g.Eventually(func(g Gomega) {
-		hrp := getHRP(ctx, g, cluster)
+		hrp := getNamedHRP(ctx, g, cluster, name)
 		g.Expect(hrp.Spec.Version).To(Equal(version))
 		hrp.Status.ObservedGeneration = hrp.Generation
 		hrp.Status.Status = "deployed"
@@ -118,9 +127,25 @@ func TestFreshInstall(t *testing.T) {
 	cluster := newCluster(ctx, t, newNamespace(ctx, t), nil)
 	cni := newClusterCNI(ctx, t, cluster, cniv1.ClusterCNISpec{Type: "calico"})
 
-	// Auto mode picks the newest Calico for the envtest Kubernetes version.
+	// Auto mode picks the newest Calico for the envtest Kubernetes version,
+	// whose CRDs come from a separate chart that is installed first.
+	var crdVersion string
+	g.Eventually(func(g Gomega) {
+		crds := getNamedHRP(ctx, g, cluster, cluster.Name+"-cni-crds")
+		g.Expect(crds.Spec.ChartName).To(Equal("crd.projectcalico.org.v1"))
+		g.Expect(crds.Spec.ReleaseName).To(Equal("calico-crds"))
+		g.Expect(crds.Spec.ReleaseNamespace).To(Equal("tigera-operator"))
+		crdVersion = crds.Spec.Version
+		g.Expect(readyReason(ctx, g, cni)).To(Equal(cniv1.InstallingReason))
+	}, eventually...).Should(Succeed())
+	g.Consistently(func() error {
+		return envClient.Get(ctx, client.ObjectKey{Namespace: cluster.Namespace, Name: cluster.Name + "-cni"}, &helmv1.HelmReleaseProxy{})
+	}, "2s", "200ms").ShouldNot(Succeed(), "the operator chart waits for its CRDs")
+	markNamedDeployed(ctx, t, cluster, cluster.Name+"-cni-crds", crdVersion)
+
 	g.Eventually(func(g Gomega) {
 		hrp := getHRP(ctx, g, cluster)
+		g.Expect(hrp.Spec.Version).To(Equal(crdVersion))
 		g.Expect(hrp.Spec.ChartName).To(Equal("tigera-operator"))
 		g.Expect(hrp.Spec.ReleaseNamespace).To(Equal("tigera-operator"))
 		g.Expect(hrp.Spec.Options.TakeOwnership).To(BeTrue())

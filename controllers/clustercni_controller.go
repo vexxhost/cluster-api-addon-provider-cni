@@ -64,12 +64,15 @@ type ClusterCNIReconciler struct {
 	WatchFilterValue string
 }
 
-// +kubebuilder:rbac:groups=cni.vexxhost.com,resources=clustercnis,verbs=get;list;watch;update;patch
+// Changing ownerReferences needs delete on the object and, for
+// blockOwnerDeletion, update on the owner's finalizers.
+// +kubebuilder:rbac:groups=cni.vexxhost.com,resources=clustercnis,verbs=get;list;watch;update;patch;delete
 // +kubebuilder:rbac:groups=cni.vexxhost.com,resources=clustercnis/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=cluster.x-k8s.io,resources=clusters,verbs=get;list;watch
+// +kubebuilder:rbac:groups=cluster.x-k8s.io,resources=clusters/finalizers,verbs=update
 // +kubebuilder:rbac:groups=controlplane.cluster.x-k8s.io,resources=*,verbs=get
 // +kubebuilder:rbac:groups=apiextensions.k8s.io,resources=customresourcedefinitions,verbs=get;list;watch
-// +kubebuilder:rbac:groups=addons.cluster.x-k8s.io,resources=helmreleaseproxies,verbs=get;list;watch;create;update;patch
+// +kubebuilder:rbac:groups=addons.cluster.x-k8s.io,resources=helmreleaseproxies,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=addons.cluster.x-k8s.io,resources=clusterresourcesets,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=configmaps,verbs=get
@@ -271,21 +274,28 @@ func (r *ClusterCNIReconciler) reconcile(ctx context.Context, cluster *clusterv1
 		}
 	}
 
+	// Some charts need their CRDs from a separate chart, at the same version,
+	// before their own resources can be created.
+	if crd := cat.CRDChartFor(hop); crd != nil {
+		crdHRP, err := r.applyCRDHelmReleaseProxy(ctx, cluster, cni, cat, crd, hop)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
+		if !helmReleaseProxyReady(crdHRP) || crdHRP.Spec.Version != cat.Format(hop) {
+			setProgress(cni, cat, adopting, observed, target, hop, "the CRDs for ", crdHRP)
+			return ctrl.Result{}, nil
+		}
+	}
+
 	hrp, err = r.applyHelmReleaseProxy(ctx, cluster, cni, cat, hop, adopting)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
 
-	switch {
-	case helmReleaseProxyReady(hrp) && observed != nil && observed.Equal(target) && hrp.Spec.Version == cat.Format(target):
+	if helmReleaseProxyReady(hrp) && observed != nil && observed.Equal(target) && hrp.Spec.Version == cat.Format(target) {
 		setReady(cni, metav1.ConditionTrue, cniv1.ReadyReason, "%s %s is running", cat.Type, cat.Format(target))
-	case adopting:
-		setReady(cni, metav1.ConditionFalse, cniv1.AdoptingReason, "taking over %s %s%s", cat.Type, cat.Format(hop), releaseMessage(hrp))
-	case observed == nil:
-		setReady(cni, metav1.ConditionFalse, cniv1.InstallingReason, "installing %s %s%s", cat.Type, cat.Format(hop), releaseMessage(hrp))
-	default:
-		setReady(cni, metav1.ConditionFalse, cniv1.UpgradingReason, "upgrading %s from %s to %s, now at step %s%s",
-			cat.Type, cat.Format(observed), cat.Format(target), cat.Format(hop), releaseMessage(hrp))
+	} else {
+		setProgress(cni, cat, adopting, observed, target, hop, "", hrp)
 	}
 	log.V(4).Info("Reconciled CNI", "observed", cni.Status.ObservedVersion, "target", cni.Status.TargetVersion, "step", cat.Format(hop))
 	return ctrl.Result{}, nil
@@ -331,6 +341,19 @@ func setCompatibility(cni *cniv1.ClusterCNI, cat *catalog.Catalog, observed *sem
 		}
 	}
 	setCompatible(cni, metav1.ConditionTrue, cniv1.CompatibleReason, "%s %s supports the cluster's Kubernetes versions", cat.Type, cat.Format(observed))
+}
+
+// setProgress reports what the controller is waiting for on the way to target.
+func setProgress(cni *cniv1.ClusterCNI, cat *catalog.Catalog, adopting bool, observed, target, hop *semver.Version, what string, hrp *helmv1.HelmReleaseProxy) {
+	switch {
+	case adopting:
+		setReady(cni, metav1.ConditionFalse, cniv1.AdoptingReason, "taking over %s%s %s%s", what, cat.Type, cat.Format(hop), releaseMessage(hrp))
+	case observed == nil:
+		setReady(cni, metav1.ConditionFalse, cniv1.InstallingReason, "installing %s%s %s%s", what, cat.Type, cat.Format(hop), releaseMessage(hrp))
+	default:
+		setReady(cni, metav1.ConditionFalse, cniv1.UpgradingReason, "upgrading %s%s from %s to %s, now at step %s%s",
+			what, cat.Type, cat.Format(observed), cat.Format(target), cat.Format(hop), releaseMessage(hrp))
+	}
 }
 
 func setReady(cni *cniv1.ClusterCNI, status metav1.ConditionStatus, reason, format string, args ...any) {

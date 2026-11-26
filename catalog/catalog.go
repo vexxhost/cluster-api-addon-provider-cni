@@ -48,6 +48,9 @@ type Catalog struct {
 	// Detect lists workloads whose container image tag gives the version of
 	// a CNI that was installed without this controller. The first match wins.
 	Detect []DetectTarget `json:"detect"`
+	// CRDChart is an optional chart with CRDs that must be installed before
+	// the main chart, at the same version.
+	CRDChart *CRDChart `json:"crdChart,omitempty"`
 	// HelmOptions are passed to the HelmReleaseProxy.
 	HelmOptions helmv1.HelmOptions `json:"helmOptions,omitempty"`
 	// MaxMinorSkip is how many minor versions one upgrade step may move.
@@ -69,6 +72,19 @@ type Chart struct {
 	RepoURL string `json:"repoURL"`
 	// Name is the chart name.
 	Name string `json:"name"`
+}
+
+// CRDChart is a chart in the same repository that installs CRDs the main
+// chart needs before its own resources can be created.
+type CRDChart struct {
+	// Name is the chart name.
+	Name string `json:"name"`
+	// Release is the Helm release name, in the namespace of the main release.
+	Release string `json:"release"`
+	// Versions is the semver constraint of the CNI versions that need it.
+	Versions string `json:"versions"`
+
+	versions *semver.Constraints
 }
 
 // Release is a Helm release in the workload cluster.
@@ -177,6 +193,16 @@ func (c *Catalog) complete() error {
 	if c.MaxMinorSkip == 0 {
 		c.MaxMinorSkip = 1
 	}
+	if c.CRDChart != nil {
+		if c.CRDChart.Name == "" || c.CRDChart.Release == "" {
+			return fmt.Errorf("crdChart.name and crdChart.release are required")
+		}
+		v, err := semver.NewConstraint(c.CRDChart.Versions)
+		if err != nil {
+			return fmt.Errorf("crdChart.versions: %w", err)
+		}
+		c.CRDChart.versions = v
+	}
 
 	var err error
 	if c.tmpl, err = newTemplate(c.Type, c.ValuesTemplate); err != nil {
@@ -222,6 +248,14 @@ func (c *Catalog) complete() error {
 		}
 	}
 	return nil
+}
+
+// CRDChartFor returns the CRD chart version v needs, or nil.
+func (c *Catalog) CRDChartFor(v *semver.Version) *CRDChart {
+	if c.CRDChart == nil || !c.CRDChart.versions.Check(release(v)) {
+		return nil
+	}
+	return c.CRDChart
 }
 
 // Format returns v the way the chart names its versions.

@@ -71,9 +71,8 @@ func releaseMessage(hrp *helmv1.HelmReleaseProxy) string {
 	return ": " + c.Message
 }
 
-// applyHelmReleaseProxy creates or updates the HelmReleaseProxy for version.
-// It is owned by the Cluster: deleting a HelmReleaseProxy uninstalls the
-// release, so deleting the ClusterCNI must leave it alone.
+// applyHelmReleaseProxy creates or updates the HelmReleaseProxy of the CNI
+// chart for version.
 func (r *ClusterCNIReconciler) applyHelmReleaseProxy(ctx context.Context, cluster *clusterv1.Cluster, cni *cniv1.ClusterCNI, cat *catalog.Catalog, version *semver.Version, adopting bool) (*helmv1.HelmReleaseProxy, error) {
 	in, err := renderInput(cluster, cni, adopting)
 	if err != nil {
@@ -93,11 +92,23 @@ func (r *ClusterCNIReconciler) applyHelmReleaseProxy(ctx context.Context, cluste
 	if err != nil {
 		return nil, err
 	}
+	return r.ensureHelmReleaseProxy(ctx, cluster, cni, cat, helmReleaseProxyName(cluster), cat.Chart.Name, cat.Release.Name, version, string(rendered), adopting)
+}
 
+// applyCRDHelmReleaseProxy creates or updates the HelmReleaseProxy of the
+// catalog's CRD chart for version.
+func (r *ClusterCNIReconciler) applyCRDHelmReleaseProxy(ctx context.Context, cluster *clusterv1.Cluster, cni *cniv1.ClusterCNI, cat *catalog.Catalog, crd *catalog.CRDChart, version *semver.Version) (*helmv1.HelmReleaseProxy, error) {
+	return r.ensureHelmReleaseProxy(ctx, cluster, cni, cat, helmReleaseProxyName(cluster)+"-crds", crd.Name, crd.Release, version, "", false)
+}
+
+// ensureHelmReleaseProxy creates or updates a HelmReleaseProxy. It is owned by
+// the Cluster: deleting a HelmReleaseProxy uninstalls the release, so deleting
+// the ClusterCNI must leave it alone.
+func (r *ClusterCNIReconciler) ensureHelmReleaseProxy(ctx context.Context, cluster *clusterv1.Cluster, cni *cniv1.ClusterCNI, cat *catalog.Catalog, name, chart, release string, version *semver.Version, values string, adopting bool) (*helmv1.HelmReleaseProxy, error) {
 	hrp := &helmv1.HelmReleaseProxy{}
-	hrp.Name = helmReleaseProxyName(cluster)
+	hrp.Name = name
 	hrp.Namespace = cluster.Namespace
-	_, err = controllerutil.CreateOrPatch(ctx, r.Client, hrp, func() error {
+	_, err := controllerutil.CreateOrPatch(ctx, r.Client, hrp, func() error {
 		if hrp.Labels == nil {
 			hrp.Labels = map[string]string{}
 		}
@@ -121,7 +132,7 @@ func (r *ClusterCNIReconciler) applyHelmReleaseProxy(ctx context.Context, cluste
 			if cni.Spec.ChartRepository != "" {
 				hrp.Spec.RepoURL = cni.Spec.ChartRepository
 			}
-			hrp.Spec.ChartName = cat.Chart.Name
+			hrp.Spec.ChartName = chart
 			hrp.Spec.ReleaseNamespace = cat.Release.Namespace
 			hrp.Spec.ReconcileStrategy = string(helmv1.ReconcileStrategyContinuous)
 		}
@@ -131,12 +142,16 @@ func (r *ClusterCNIReconciler) applyHelmReleaseProxy(ctx context.Context, cluste
 			Namespace:  cluster.Namespace,
 			Name:       cluster.Name,
 		}
-		hrp.Spec.ReleaseName = cat.Release.Name
+		hrp.Spec.ReleaseName = release
 		hrp.Spec.Version = cat.Format(version)
-		hrp.Spec.Values = string(rendered)
+		hrp.Spec.Values = values
 		hrp.Spec.Options = cat.HelmOptions
 		hrp.Spec.Options.TakeOwnership = true
 		hrp.Spec.Options.Install.CreateNamespace = true
+		// Match the CRD default, so an unchanged spec doesn't patch every time.
+		if hrp.Spec.Options.Upgrade.MaxHistory == 0 {
+			hrp.Spec.Options.Upgrade.MaxHistory = 10
+		}
 		return nil
 	})
 	return hrp, err

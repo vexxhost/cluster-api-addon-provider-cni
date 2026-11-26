@@ -51,6 +51,7 @@ type cniSpec struct {
 	namespace     *corev1.Namespace
 	cancelWatches context.CancelFunc
 	cluster       *clusterv1.Cluster
+	result        *clusterctl.ApplyClusterTemplateAndWaitResult
 	catalogs      catalog.Catalogs
 }
 
@@ -64,6 +65,11 @@ func newSpec(name string) *cniSpec {
 
 // cleanup dumps the spec's resources and logs and deletes its cluster.
 func (s *cniSpec) cleanup() {
+	// The framework records the Cluster as soon as it exists, so a spec that
+	// fails while creating it still collects the workload cluster's logs.
+	if s.cluster == nil && s.result != nil {
+		s.cluster = s.result.Cluster
+	}
 	framework.DumpSpecResourcesAndCleanup(ctx, s.name, bootstrapClusterProxy, clusterctlConfigPath, artifactFolder,
 		s.namespace, s.cancelWatches, s.cluster, e2eConfig.GetIntervals, skipCleanup)
 }
@@ -103,6 +109,7 @@ func (s *cniSpec) createNamedCluster(name, flavor, kubernetes string, cniSpec ma
 		vars["E2E_CLUSTERCNI_SPEC"] = toJSON(cniSpec)
 	}
 	result := &clusterctl.ApplyClusterTemplateAndWaitResult{}
+	s.result = result
 	clusterctl.ApplyClusterTemplateAndWait(ctx, clusterctl.ApplyClusterTemplateAndWaitInput{
 		ClusterProxy: bootstrapClusterProxy,
 		ConfigCluster: clusterctl.ConfigClusterInput{
