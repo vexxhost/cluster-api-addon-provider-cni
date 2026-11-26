@@ -32,6 +32,7 @@ rules:
   - helmreleaseproxies
   verbs:
   - create
+  - delete
   - get
   - list
   - patch
@@ -66,10 +67,17 @@ rules:
   - list
   - watch
 - apiGroups:
+  - cluster.x-k8s.io
+  resources:
+  - clusters/finalizers
+  verbs:
+  - update
+- apiGroups:
   - cni.vexxhost.com
   resources:
   - clustercnis
   verbs:
+  - delete
   - get
   - list
   - patch
