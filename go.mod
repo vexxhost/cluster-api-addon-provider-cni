@@ -9,7 +9,7 @@ require (
 	github.com/onsi/ginkgo/v2 v2.32.0
 	github.com/onsi/gomega v1.42.1
 	github.com/spf13/pflag v1.1.0
-	go.yaml.in/yaml/v3 v3.0.5
+	go.yaml.in/yaml/v3 v3.0.6
 	helm.sh/helm/v3 v3.21.0
 	k8s.io/api v0.36.3
 	k8s.io/apiextensions-apiserver v0.36.3
