@@ -1,0 +1,111 @@
+# Cilium, installed with the upstream Helm chart.
+#
+# Every minor lists its latest patch and the Kubernetes versions upstream
+# tests it against. The catalog-sync workflow keeps the patches current and
+# proposes new minors for review.
+type: cilium
+chart:
+  repoURL: https://helm.cilium.io
+  name: cilium
+release:
+  name: cilium
+  namespace: kube-system
+detect:
+  - kind: DaemonSet
+    namespace: kube-system
+    name: cilium
+    container: cilium-agent
+helmOptions:
+  wait: true
+  timeout: 15m0s
+# Cilium supports upgrading one minor version at a time.
+maxMinorSkip: 1
+valuesTemplate: |
+  {{- if or .IPv4PodCIDRs .IPv6PodCIDRs }}
+  ipam:
+    operator:
+      {{- with .IPv4PodCIDRs }}
+      clusterPoolIPv4PodCIDRList: {{ toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .IPv6PodCIDRs }}
+      clusterPoolIPv6PodCIDRList: {{ toYaml . | nindent 8 }}
+      {{- end }}
+  {{- end }}
+  {{- with .IPv6PodCIDRs }}
+  ipv6:
+    enabled: true
+  {{- end }}
+  {{- if .KubeProxyReplacement }}
+  kubeProxyReplacement: true
+  k8sServiceHost: {{ .APIServerHost | quote }}
+  k8sServicePort: {{ .APIServerPort }}
+  {{- end }}
+  {{- with .ImageRepository }}
+  image:
+    repository: {{ . }}/cilium
+    useDigest: false
+  operator:
+    image:
+      repository: {{ . }}/operator
+      useDigest: false
+  envoy:
+    image:
+      repository: {{ . }}/cilium-envoy
+      useDigest: false
+  certgen:
+    image:
+      repository: {{ . }}/certgen
+      useDigest: false
+  hubble:
+    relay:
+      image:
+        repository: {{ . }}/hubble-relay
+        useDigest: false
+    ui:
+      backend:
+        image:
+          repository: {{ . }}/hubble-ui-backend
+          useDigest: false
+      frontend:
+        image:
+          repository: {{ . }}/hubble-ui
+          useDigest: false
+  clustermesh:
+    apiserver:
+      image:
+        repository: {{ . }}/clustermesh-apiserver
+        useDigest: false
+  nodeinit:
+    image:
+      repository: {{ . }}/startup-script
+      useDigest: false
+  preflight:
+    image:
+      repository: {{ . }}/cilium
+      useDigest: false
+  {{- end }}
+minors:
+  - minor: "1.15"
+    version: 1.15.19
+    kubernetes: ">= 1.26.0-0, < 1.30.0-0"
+    compatibilitySource: https://docs.cilium.io/en/v1.15/network/kubernetes/compatibility/
+  - minor: "1.16"
+    version: 1.16.19
+    kubernetes: ">= 1.27.0-0, < 1.31.0-0"
+    compatibilitySource: https://docs.cilium.io/en/v1.16/network/kubernetes/compatibility/
+  - minor: "1.17"
+    version: 1.17.18
+    kubernetes: ">= 1.29.0-0, < 1.33.0-0"
+    compatibilitySource: https://docs.cilium.io/en/v1.17/network/kubernetes/compatibility/
+  - minor: "1.18"
+    version: 1.18.17
+    kubernetes: ">= 1.30.0-0, < 1.34.0-0"
+    compatibilitySource: https://docs.cilium.io/en/v1.18/network/kubernetes/compatibility/
+  - minor: "1.19"
+    version: 1.19.11
+    kubernetes: ">= 1.32.0-0, < 1.36.0-0"
+    compatibilitySource: https://docs.cilium.io/en/v1.19/network/kubernetes/compatibility/
+  - minor: "1.20"
+    version: 1.20.5
+    kubernetes: ">= 1.33.0-0, < 1.37.0-0"
+    compatibilitySource: https://docs.cilium.io/en/v1.20/network/kubernetes/compatibility/

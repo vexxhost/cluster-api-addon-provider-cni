@@ -1,0 +1,18 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: capi-cni-system
+namePrefix: capi-cni-
+
+labels:
+  - includeSelectors: true
+    pairs:
+      cluster.x-k8s.io/provider: addon-cni
+
+resources:
+  - namespace.yaml
+  - ../crd
+  - ../rbac
+  - ../manager
+  - ../webhook
+  - ../certmanager

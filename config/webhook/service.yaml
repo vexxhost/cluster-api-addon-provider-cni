@@ -1,0 +1,14 @@
+# Serves the Cluster API lifecycle hooks registered by the ExtensionConfig in
+# config/runtime-extension.
+apiVersion: v1
+kind: Service
+metadata:
+  name: webhook-service
+  namespace: system
+spec:
+  ports:
+    - name: https
+      port: 443
+      targetPort: webhook-server
+  selector:
+    control-plane: controller-manager

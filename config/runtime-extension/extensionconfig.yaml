@@ -1,0 +1,17 @@
+# Registers the lifecycle hooks with Cluster API. Apply it after enabling the
+# RuntimeSDK feature gate; Cluster API rejects ExtensionConfigs without it,
+# which is why it ships separately from addon-components.yaml.
+apiVersion: runtime.cluster.x-k8s.io/v1beta2
+kind: ExtensionConfig
+metadata:
+  name: capi-cni
+  annotations:
+    runtime.cluster.x-k8s.io/inject-ca-from-secret: capi-cni-system/capi-cni-webhook-service-cert
+spec:
+  clientConfig:
+    service:
+      name: capi-cni-webhook-service
+      namespace: capi-cni-system
+      port: 443
+  # Every namespace; a Cluster without a ClusterCNI is always allowed.
+  namespaceSelector: {}
