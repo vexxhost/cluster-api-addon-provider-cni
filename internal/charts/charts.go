@@ -92,7 +92,7 @@ func (r *Repo) Fetch(name, version string) (*chart.Chart, error) {
 		return nil, fmt.Errorf("downloading %s: %w", u, err)
 	}
 	data := buf.Bytes()
-	if err := os.MkdirAll(filepath.Dir(cache), 0o755); err == nil {
+	if err := os.MkdirAll(filepath.Dir(cache), 0o750); err == nil {
 		_ = os.WriteFile(cache, data, 0o600)
 	}
 	return loader.LoadArchive(bytes.NewReader(data))

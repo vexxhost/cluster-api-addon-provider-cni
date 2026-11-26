@@ -26,6 +26,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
@@ -44,7 +45,18 @@ func main() {
 	dir := flag.String("catalog-dir", "catalog", "directory with the catalog files")
 	mode := flag.String("mode", "patch", `"patch" bumps patch releases, "minor" adds new minors, "format" only normalizes the files`)
 	summary := flag.String("summary-file", "", "file to write a markdown summary of the changes to")
+	baseDir := flag.String("base-dir", "", `with -mode=changed, the directory with the catalog files to compare against`)
 	flag.Parse()
+
+	if *mode == "changed" {
+		out, err := changedMinors(*baseDir, *dir)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		fmt.Println(out)
+		return
+	}
 
 	changes, err := syncDir(*dir, *mode)
 	if err != nil {
@@ -82,7 +94,7 @@ func syncDir(dir, mode string) ([]string, error) {
 }
 
 func syncFile(path, mode string) ([]string, error) {
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) //nolint:gosec // the path comes from -catalog-dir
 	if err != nil {
 		return nil, err
 	}
@@ -91,7 +103,7 @@ func syncFile(path, mode string) ([]string, error) {
 		if err != nil {
 			return nil, err
 		}
-		return nil, os.WriteFile(path, out, 0o600)
+		return nil, os.WriteFile(path, out, 0o600) //nolint:gosec // the path comes from -catalog-dir
 	}
 	cat, err := catalog.Parse(data)
 	if err != nil {
@@ -180,6 +192,67 @@ func encode(doc *yaml.Node) ([]byte, error) {
 		return nil, err
 	}
 	return out.Bytes(), nil
+}
+
+// changedMinor is a catalog minor that is new or has a new version.
+type changedMinor struct {
+	CNI   string `json:"cni"`
+	Minor string `json:"minor"`
+}
+
+// changedMinors returns, as a JSON list, every minor in dir that is missing
+// from baseDir or has a different version there.
+func changedMinors(baseDir, dir string) (string, error) {
+	base, err := loadVersions(baseDir)
+	if err != nil {
+		return "", err
+	}
+	current, err := loadVersions(dir)
+	if err != nil {
+		return "", err
+	}
+	changed := []changedMinor{}
+	for _, cniType := range sortedKeys(current) {
+		for _, minor := range sortedKeys(current[cniType]) {
+			if base[cniType][minor] != current[cniType][minor] {
+				changed = append(changed, changedMinor{CNI: cniType, Minor: minor})
+			}
+		}
+	}
+	out, err := json.Marshal(changed)
+	return string(out), err
+}
+
+// loadVersions maps CNI type and minor to version for the catalogs in dir.
+// A missing directory has no versions.
+func loadVersions(dir string) (map[string]map[string]string, error) {
+	out := map[string]map[string]string{}
+	if dir == "" {
+		return out, nil
+	}
+	if _, err := os.Stat(dir); os.IsNotExist(err) {
+		return out, nil
+	}
+	catalogs, err := catalog.Load(os.DirFS(dir))
+	if err != nil {
+		return nil, err
+	}
+	for cniType, c := range catalogs {
+		out[cniType] = map[string]string{}
+		for _, m := range c.Minors {
+			out[cniType][m.Minor] = m.Version
+		}
+	}
+	return out, nil
+}
+
+func sortedKeys[V any](m map[string]V) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 // latestPatches maps every released minor of a chart to its newest patch.

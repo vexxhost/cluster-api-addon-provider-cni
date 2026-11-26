@@ -140,7 +140,11 @@ func TestBeforeClusterUpgrade(t *testing.T) {
 			resp := &runtimehooksv1.BeforeClusterUpgradeResponse{}
 			handlers(t, objs...).BeforeClusterUpgrade(context.Background(), req, resp)
 			g.Expect(resp.Status).To(Equal(tt.wantStatus), resp.Message)
-			g.Expect(resp.RetryAfterSeconds != 0).To(Equal(tt.wantRetry), resp.Message)
+			if tt.wantRetry {
+				g.Expect(resp.RetryAfterSeconds).ToNot(BeZero(), resp.Message)
+			} else {
+				g.Expect(resp.RetryAfterSeconds).To(BeZero(), resp.Message)
+			}
 		})
 	}
 }

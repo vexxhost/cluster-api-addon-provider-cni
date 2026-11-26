@@ -180,7 +180,7 @@ func followPlan(cat *catalog.Catalog, requested string, observed *semver.Version
 		if !cat.Supports(current, next) {
 			target, err := cat.Target(requested, current, prev, next)
 			if err != nil {
-				return fmt.Errorf("Kubernetes %s to %s: %w", prev, next, err)
+				return fmt.Errorf("from Kubernetes %s to %s: %w", prev, next, err)
 			}
 			if !cat.Supports(target, prev, next) {
 				return fmt.Errorf("%s does not support both Kubernetes %s and %s; %s", cat.Format(target), prev, next, pinHint(requested))

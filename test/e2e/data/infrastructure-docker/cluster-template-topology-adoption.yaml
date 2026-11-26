@@ -1,0 +1,36 @@
+# A CAPD workload cluster from the Cluster API quick-start ClusterClass without
+# a ClusterCNI. The adoption specs install the CNI with a ClusterResourceSet
+# that selects the cluster-uuid label, then hand it over to a ClusterCNI.
+---
+apiVersion: cluster.x-k8s.io/v1beta2
+kind: Cluster
+metadata:
+  name: "${CLUSTER_NAME}"
+  labels:
+    cluster-uuid: "${CLUSTER_NAME}"
+spec:
+  clusterNetwork:
+    services:
+      cidrBlocks: ["${DOCKER_SERVICE_CIDRS}"]
+    pods:
+      cidrBlocks: ["${DOCKER_POD_CIDRS}"]
+    serviceDomain: "${DOCKER_SERVICE_DOMAIN}"
+  topology:
+    classRef:
+      name: quick-start
+    version: "${KUBERNETES_VERSION}"
+    controlPlane:
+      replicas: ${CONTROL_PLANE_MACHINE_COUNT}
+    workers:
+      machineDeployments:
+        - class: default-worker
+          name: md-0
+          replicas: ${WORKER_MACHINE_COUNT}
+          failureDomain: fd4
+    variables:
+      - name: etcdImageTag
+        value: ""
+      - name: coreDNSImageTag
+        value: ""
+      - name: preLoadImages
+        value: ${DOCKER_PRELOAD_IMAGES:-[]}

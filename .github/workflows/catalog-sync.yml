@@ -1,0 +1,80 @@
+# Keeps the catalog current with the upstream chart repositories.
+#
+# New patch releases go into one pull request that merges by itself once its
+# checks pass. A new minor version gets its own pull request for review: its
+# Kubernetes range is copied from the previous minor and must be confirmed
+# against the upstream compatibility page linked in the catalog.
+name: catalog-sync
+
+on:
+  schedule:
+    - cron: "23 5 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    name: sync (${{ matrix.mode }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - mode: patch
+            branch: catalog-sync/patch
+            label: catalog/patch
+            title: Update the catalog to the latest CNI patch releases
+          - mode: minor
+            branch: catalog-sync/minor
+            label: catalog/minor
+            title: Add new CNI minor versions to the catalog
+    steps:
+      # Pull requests opened with the default token don't run workflows, so
+      # the bot pull requests use a GitHub App token.
+      - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        id: app-token
+        with:
+          client-id: ${{ vars.VEXXHOST_CI_APP_CLIENT_ID }}
+          private-key: ${{ secrets.VEXXHOST_CI_APP_PRIVATE_KEY }}
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version: "1.26"
+          check-latest: true
+      - name: Update the catalog
+        env:
+          MODE: ${{ matrix.mode }}
+        run: |
+          go run ./hack/catalog-sync -mode "$MODE" -summary-file "$RUNNER_TEMP/changes.md"
+          {
+            echo "\`hack/catalog-sync -mode $MODE\` found these upstream releases:"
+            echo
+            cat "$RUNNER_TEMP/changes.md"
+            echo
+            if [ "$MODE" = minor ]; then
+              echo "Each new minor copies the Kubernetes range of the previous one. Check it against the linked compatibility page and fix it before merging. The catalog workflow installs every new minor on the newest Kubernetes version in its range and upgrades to it from the previous minor."
+            else
+              echo "The catalog workflow installs every updated minor and upgrades to it from the previous minor. This pull request merges once the checks pass."
+            fi
+          } > "$RUNNER_TEMP/body.md"
+      - uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
+        id: pr
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          branch: ${{ matrix.branch }}
+          delete-branch: true
+          signoff: true
+          commit-message: ${{ matrix.title }}
+          title: ${{ matrix.title }}
+          body-path: ${{ runner.temp }}/body.md
+          labels: ${{ matrix.label }}
+      - name: Merge patch updates once the checks pass
+        if: matrix.mode == 'patch' && steps.pr.outputs.pull-request-number != ''
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          PR: ${{ steps.pr.outputs.pull-request-number }}
+        run: gh pr merge "$PR" --auto --squash

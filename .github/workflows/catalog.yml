@@ -1,0 +1,75 @@
+# Runs the catalog e2e spec for every catalog minor a pull request adds or
+# changes: it installs the minor on the newest Kubernetes version it supports
+# and upgrades to it from the previous minor.
+name: catalog
+
+on:
+  pull_request:
+    paths:
+      - catalog/*.yaml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changed:
+    runs-on: ubuntu-latest
+    outputs:
+      minors: ${{ steps.changed.outputs.minors }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version: "1.26"
+          check-latest: true
+      - id: changed
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/base"
+          for f in $(git ls-tree --name-only "origin/$BASE_REF" catalog/ | grep '\.yaml$'); do
+            git show "origin/$BASE_REF:$f" > "$RUNNER_TEMP/base/$(basename "$f")"
+          done
+          minors=$(go run ./hack/catalog-sync -mode changed -base-dir "$RUNNER_TEMP/base" -catalog-dir catalog)
+          echo "Changed minors: $minors"
+          echo "minors=$minors" >> "$GITHUB_OUTPUT"
+
+  e2e:
+    needs: changed
+    if: needs.changed.outputs.minors != '[]'
+    name: e2e (${{ matrix.cni }} ${{ matrix.minor }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.changed.outputs.minors) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version: "1.26"
+          check-latest: true
+      - name: Raise inotify limits
+        run: |
+          sudo sysctl -w fs.inotify.max_user_watches=1048576
+          sudo sysctl -w fs.inotify.max_user_instances=8192
+      - name: Run the catalog e2e spec
+        env:
+          E2E_CATALOG_CNI: ${{ matrix.cni }}
+          E2E_CATALOG_MINOR: ${{ matrix.minor }}
+        run: make test-e2e GINKGO_FOCUS='\[Catalog\]' ARTIFACTS=${{ github.workspace }}/_artifacts
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: e2e-artifacts-${{ matrix.cni }}-${{ matrix.minor }}
+          path: _artifacts
+          if-no-files-found: ignore
+          retention-days: 7

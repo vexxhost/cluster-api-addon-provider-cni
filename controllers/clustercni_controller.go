@@ -242,7 +242,7 @@ func (r *ClusterCNIReconciler) reconcile(ctx context.Context, cluster *clusterv1
 	}
 	cni.Status.TargetVersion = cat.Format(target)
 
-	hop := target
+	var hop *semver.Version
 	switch {
 	case inProgress:
 		// Finish the step that is rolling out before taking the next one.

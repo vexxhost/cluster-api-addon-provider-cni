@@ -185,5 +185,5 @@ type ClusterCNIList struct {
 }
 
 func init() {
-	SchemeBuilder.Register(&ClusterCNI{}, &ClusterCNIList{})
+	objectTypes = append(objectTypes, &ClusterCNI{}, &ClusterCNIList{})
 }

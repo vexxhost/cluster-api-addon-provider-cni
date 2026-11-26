@@ -5,3 +5,6 @@
 /hack/tools/envtest/
 *.test
 cover.out
+
+# Copied from the Cluster API test module by the e2e suite.
+/test/e2e/data/infrastructure-docker/clusterclass-quick-start.yaml

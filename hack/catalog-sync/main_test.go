@@ -157,3 +157,27 @@ func TestBuiltinCatalogsRoundTrip(t *testing.T) {
 		})
 	}
 }
+
+func TestChangedMinors(t *testing.T) {
+	g := NewWithT(t)
+	base, current := t.TempDir(), t.TempDir()
+	write := func(dir, versions string) {
+		data := fmt.Sprintf(fixtureCatalog, "https://charts.example.com")
+		data = strings.Replace(data, "version: 1.16.19", versions, 1)
+		g.Expect(os.WriteFile(filepath.Join(dir, "test.yaml"), []byte(data), 0o600)).To(Succeed())
+	}
+	write(base, "version: 1.16.19")
+	write(current, "version: 1.16.20")
+
+	out, err := changedMinors(base, current)
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(out).To(Equal(`[{"cni":"test","minor":"1.16"}]`))
+
+	out, err = changedMinors(current, current)
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(out).To(Equal(`[]`))
+
+	out, err = changedMinors(filepath.Join(base, "missing"), current)
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(out).To(Equal(`[{"cni":"test","minor":"1.15"},{"cni":"test","minor":"1.16"}]`), "every minor is new without a base")
+}

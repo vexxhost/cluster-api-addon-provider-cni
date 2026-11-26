@@ -1,0 +1,140 @@
+# E2E test configuration for the Cluster API test framework.
+#
+# A kind management cluster gets Cluster API, the kubeadm providers and CAPD
+# from the v1.14.3 release, the Cluster API Add-on Provider for Helm (CAAPH),
+# and cluster-api-addon-provider-cni as a clusterctl AddonProvider built from
+# config/default with the locally built image. The RuntimeSDK feature gate is
+# on so the lifecycle hooks run.
+managementClusterName: capi-cni-e2e
+
+images:
+  - name: ghcr.io/vexxhost/cluster-api-addon-provider-cni:e2e
+    loadBehavior: mustLoad
+  - name: registry.k8s.io/cluster-api/cluster-api-controller:v1.14.3
+    loadBehavior: tryLoad
+  - name: registry.k8s.io/cluster-api/kubeadm-bootstrap-controller:v1.14.3
+    loadBehavior: tryLoad
+  - name: registry.k8s.io/cluster-api/kubeadm-control-plane-controller:v1.14.3
+    loadBehavior: tryLoad
+  - name: gcr.io/k8s-staging-cluster-api/capd-manager:v1.14.3
+    loadBehavior: tryLoad
+  - name: registry.k8s.io/cluster-api-helm/cluster-api-helm-controller:v0.6.6
+    loadBehavior: tryLoad
+
+providers:
+  - name: cluster-api
+    type: CoreProvider
+    versions:
+      - name: v1.14.3
+        value: https://github.com/kubernetes-sigs/cluster-api/releases/download/v1.14.3/core-components.yaml
+        type: url
+        contract: v1beta2
+        files:
+          - sourcePath: ../data/shared/capi/metadata.yaml
+        replacements:
+          - old: --metrics-addr=127.0.0.1:8080
+            new: --metrics-addr=:8080
+
+  - name: kubeadm
+    type: BootstrapProvider
+    versions:
+      - name: v1.14.3
+        value: https://github.com/kubernetes-sigs/cluster-api/releases/download/v1.14.3/bootstrap-components.yaml
+        type: url
+        contract: v1beta2
+        files:
+          - sourcePath: ../data/shared/capi/metadata.yaml
+        replacements:
+          - old: --metrics-addr=127.0.0.1:8080
+            new: --metrics-addr=:8080
+
+  - name: kubeadm
+    type: ControlPlaneProvider
+    versions:
+      - name: v1.14.3
+        value: https://github.com/kubernetes-sigs/cluster-api/releases/download/v1.14.3/control-plane-components.yaml
+        type: url
+        contract: v1beta2
+        files:
+          - sourcePath: ../data/shared/capi/metadata.yaml
+        replacements:
+          - old: "imagePullPolicy: Always"
+            new: "imagePullPolicy: IfNotPresent"
+
+  - name: docker
+    type: InfrastructureProvider
+    versions:
+      - name: v1.14.3
+        value: https://github.com/kubernetes-sigs/cluster-api/releases/download/v1.14.3/infrastructure-components-development.yaml
+        type: url
+        contract: v1beta2
+        files:
+          - sourcePath: ../data/shared/capi/metadata.yaml
+          - sourcePath: ../data/infrastructure-docker/cluster-template-topology.yaml
+          - sourcePath: ../data/infrastructure-docker/cluster-template-topology-adoption.yaml
+          - sourcePath: ../data/infrastructure-docker/cluster-template-kcp.yaml
+          # Copied from the Cluster API test module by the suite, so it always
+          # matches the Cluster API version in go.mod.
+          - sourcePath: ../data/infrastructure-docker/clusterclass-quick-start.yaml
+        replacements:
+          - old: --metrics-addr=127.0.0.1:8080
+            new: --metrics-addr=:8080
+
+  - name: helm
+    type: AddonProvider
+    versions:
+      - name: v0.6.6
+        value: https://github.com/kubernetes-sigs/cluster-api-addon-provider-helm/releases/download/v0.6.6/addon-components.yaml
+        type: url
+        contract: v1beta2
+        files:
+          - sourcePath: ../data/shared/caaph/metadata.yaml
+
+  - name: cni
+    type: AddonProvider
+    versions:
+      # "vNext": manifests built from the local kustomize sources.
+      - name: v0.1.99
+        value: ../../../config/default
+        type: kustomize
+        contract: v1beta2
+        files:
+          - sourcePath: ../data/shared/cni/metadata.yaml
+        replacements:
+          - old: ghcr.io/vexxhost/cluster-api-addon-provider-cni:main
+            new: ghcr.io/vexxhost/cluster-api-addon-provider-cni:e2e
+          - old: "--v=${CNI_LOG_LEVEL:=2}"
+            new: "--v=4"
+
+variables:
+  KUBERNETES_VERSION: "v1.35.8"
+  DOCKER_SERVICE_DOMAIN: "cluster.local"
+  DOCKER_SERVICE_CIDRS: "10.128.0.0/12"
+  DOCKER_POD_CIDRS: "192.168.0.0/16"
+  EXP_CLUSTER_RESOURCE_SET: "true"
+  EXP_RUNTIME_SDK: "true"
+  CLUSTER_TOPOLOGY: "true"
+  CAPI_DIAGNOSTICS_ADDRESS: ":8080"
+  CAPI_INSECURE_DIAGNOSTICS: "true"
+  CNI_INSECURE_DIAGNOSTICS: "true"
+  CNI_DIAGNOSTICS_ADDRESS: ":8080"
+  # Kubernetes versions the specs use; each has a kindest/node image in the
+  # CAPD kind mapper of the Cluster API version above.
+  KUBERNETES_VERSION_1_32: "v1.32.11"
+  KUBERNETES_VERSION_1_33: "v1.33.12"
+  KUBERNETES_VERSION_1_34: "v1.34.11"
+  KUBERNETES_VERSION_1_35: "v1.35.8"
+  KUBERNETES_VERSION_1_36: "v1.36.4"
+  KUBERNETES_VERSION_1_37: "v1.37.0"
+
+intervals:
+  default/wait-controllers: ["5m", "10s"]
+  default/wait-cluster: ["5m", "10s"]
+  default/wait-control-plane: ["15m", "10s"]
+  default/wait-worker-nodes: ["15m", "10s"]
+  default/wait-machine-pool-nodes: ["5m", "10s"]
+  default/wait-delete-cluster: ["10m", "10s"]
+  default/wait-nodes-ready: ["10m", "10s"]
+  default/wait-cni: ["20m", "10s"]
+  default/wait-network: ["5m", "5s"]
+  default/wait-upgrade: ["90m", "15s"]
