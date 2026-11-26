@@ -21,7 +21,11 @@ package e2e
 import (
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"os"
+	"os/exec"
+	"strings"
 
 	"github.com/Masterminds/semver/v3"
 	. "github.com/onsi/ginkgo/v2"
@@ -96,10 +100,10 @@ func (s *cniSpec) createClusterResourceSets(clusterName, cniFile, cniManifest st
 // createAdoptionCluster creates the ClusterResourceSets and a cluster they
 // select. The cluster name must be known before the cluster exists, so the
 // spec picks it here.
-func (s *cniSpec) createAdoptionCluster(kubernetes, cniFile, cniManifest string) {
+func (s *cniSpec) createAdoptionCluster(flavor, kubernetes, cniFile, cniManifest string, vars map[string]string) {
 	name := fmt.Sprintf("%s-%s", s.name, randomSuffix())
 	s.createClusterResourceSets(name, cniFile, cniManifest)
-	s.createNamedCluster(name, "topology-adoption", kubernetes, nil)
+	s.createNamedCluster(name, flavor, kubernetes, nil, vars)
 }
 
 type podState struct {
@@ -143,7 +147,7 @@ var _ = Describe("Adopting a magnum-cluster-api shaped Cilium [Adoption-Cilium]"
 		Expect(err).ToNot(HaveOccurred())
 
 		By("Creating a cluster that gets Cilium from a ClusterResourceSet")
-		s.createAdoptionCluster(k8s, "cilium.yaml", manifest)
+		s.createAdoptionCluster("topology-adoption", k8s, "cilium.yaml", manifest, nil)
 		s.expectNetwork()
 		before := s.daemonSetState("kube-system", "cilium")
 
@@ -192,7 +196,7 @@ var _ = Describe("Adopting a magnum-cluster-api shaped Calico [Adoption-Calico]"
 		Expect(err).ToNot(HaveOccurred())
 
 		By("Creating a cluster that gets Calico from a ClusterResourceSet")
-		s.createAdoptionCluster(k8s, "calico.yml", string(manifest))
+		s.createAdoptionCluster("topology-adoption", k8s, "calico.yml", string(manifest), nil)
 		s.expectNetwork()
 
 		By("Handing Calico over to a ClusterCNI at its running version")
@@ -223,3 +227,102 @@ var _ = Describe("Adopting a magnum-cluster-api shaped Calico [Adoption-Calico]"
 func providerConfig(values map[string]any) *apiextensionsv1.JSON {
 	return &apiextensionsv1.JSON{Raw: []byte(toJSON(values))}
 }
+
+// mirrorImages are the values magnum-cluster-api sets for a registry mirror:
+// flattened image names under the mirror and no digests.
+func mirrorImages(mirror string) map[string]any {
+	return map[string]any{
+		"image":    map[string]any{"repository": mirror + "/cilium-cilium", "useDigest": false},
+		"operator": map[string]any{"image": map[string]any{"repository": mirror + "/cilium-operator", "useDigest": false}},
+	}
+}
+
+// kindGateway returns the IPv4 gateway of the kind Docker network, where the
+// workload cluster nodes reach ports published on the host.
+func kindGateway() string {
+	out, err := exec.Command("docker", "network", "inspect", "kind", "--format", "{{range .IPAM.Config}}{{.Gateway}} {{end}}").Output()
+	Expect(err).ToNot(HaveOccurred())
+	for _, gw := range strings.Fields(string(out)) {
+		if ip := net.ParseIP(gw); ip != nil && ip.To4() != nil {
+			return gw
+		}
+	}
+	Fail("the kind network has no IPv4 gateway: " + string(out))
+	return ""
+}
+
+func agentImage(s *cniSpec) string {
+	ds := &appsv1.DaemonSet{}
+	Expect(s.workload().Get(ctx, client.ObjectKey{Namespace: "kube-system", Name: "cilium"}, ds)).To(Succeed())
+	for _, c := range ds.Spec.Template.Spec.Containers {
+		if c.Name == "cilium-agent" {
+			return c.Image
+		}
+	}
+	Fail("the cilium DaemonSet has no cilium-agent container")
+	return ""
+}
+
+// The mirror spec needs a registry on port 5000 of the host holding the
+// Cilium images under magnum-cluster-api's flattened names; the e2e workflow
+// starts it and sets E2E_MIRROR.
+var _ = Describe("Adopting Cilium pulled from a registry mirror [Adoption-Cilium-Mirror]", func() {
+	var s *cniSpec
+	BeforeEach(func() {
+		if os.Getenv("E2E_MIRROR") == "" {
+			Skip("E2E_MIRROR is not set")
+		}
+		s = newSpec("adoption-mirror")
+	})
+	AfterEach(func() {
+		if s != nil {
+			s.cleanup()
+		}
+	})
+
+	It("keeps the mirrored images through the takeover and the next upgrade", func() {
+		k8s := kubernetesVersion("1.32")
+		mirror := kindGateway() + ":5000"
+		podCIDR := e2eConfig.MustGetVariable("DOCKER_POD_CIDRS")
+
+		By("Rendering Cilium 1.15.3 with images from " + mirror)
+		values := magnumCiliumValues(podCIDR)
+		for k, v := range mirrorImages(mirror) {
+			values[k] = v
+		}
+		repo, err := charts.LoadRepo("https://helm.cilium.io")
+		Expect(err).ToNot(HaveOccurred())
+		chart, err := repo.Fetch("cilium", "1.15.3")
+		Expect(err).ToNot(HaveOccurred())
+		manifest, err := charts.Render(chart, "cilium", "kube-system", "", values)
+		Expect(err).ToNot(HaveOccurred())
+
+		By("Creating a cluster whose nodes pull from the mirror and get Cilium from a ClusterResourceSet")
+		s.createAdoptionCluster("kcp-mirror", k8s, "cilium.yaml", manifest, map[string]string{"MIRROR_REGISTRY": mirror})
+		s.expectNetwork()
+		before := s.daemonSetState("kube-system", "cilium")
+		Expect(agentImage(s)).To(Equal(mirror + "/cilium-cilium:v1.15.3"))
+
+		By("Handing Cilium over with the mirrored images in providerConfig")
+		config := map[string]any{
+			"cni":             map[string]any{"chainingMode": "portmap"},
+			"k8s":             map[string]any{"serviceProxyName": "cilium"},
+			"sessionAffinity": true,
+		}
+		for k, v := range mirrorImages(mirror) {
+			config[k] = v
+		}
+		s.createCNI(cniv1.ClusterCNISpec{Type: "cilium", Version: "1.15.3", ProviderConfig: providerConfig(config)})
+		s.expectCNI("cilium", semver.MustParse("1.15.3"))
+		after := s.daemonSetState("kube-system", "cilium")
+		Expect(after.generation).To(Equal(before.generation))
+		Expect(after.pods).To(Equal(before.pods))
+		Expect(agentImage(s)).To(Equal(mirror + "/cilium-cilium:v1.15.3"))
+
+		By("Upgrading to 1.15.19 from the mirror")
+		s.updateCNI(func(c *cniv1.ClusterCNI) { c.Spec.Version = "1.15.19" })
+		s.expectCNI("cilium", semver.MustParse("1.15.19"))
+		Expect(agentImage(s)).To(Equal(mirror + "/cilium-cilium:v1.15.19"))
+		s.expectNetwork()
+	})
+})

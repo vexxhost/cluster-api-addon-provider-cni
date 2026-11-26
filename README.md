@@ -19,7 +19,7 @@ flowchart LR
   hooks -- reads status, announces next version --> cni
 ```
 
-- **The catalog** is compiled into the controller. For every CNI minor version it lists the latest patch, the Kubernetes versions upstream tests it against, and the versions it can be upgraded from. A daily workflow keeps the patches current.
+- **The catalog** is compiled into the controller. For every CNI minor version it lists the latest patch, the Kubernetes versions upstream tests it against, and the versions it can be upgraded from, plus any chart that must provide CRDs first. A daily workflow keeps the patches current.
 - **The controller** reads the Cluster's Kubernetes version, resolves the target CNI version, and writes one `HelmReleaseProxy` per cluster for the next step on the way there. When CAAPH reports the release deployed, it takes the next step.
 - **The hooks** (optional) hold each control plane step of a Kubernetes upgrade until the CNI supports the new version, and hold the workers while the CNI rolls out.
 
