@@ -14,7 +14,7 @@ make verify     # fails if generated files or go.mod are out of date
 make test-e2e   # kind + CAPD, every spec; set GINKGO_FOCUS for one
 ```
 
-The e2e specs are tagged by name: `[Cilium]`, `[Calico-Chained]`, `[KCP]`, `[Adoption-Cilium]`, `[Adoption-Calico]` and `[Catalog]`. The catalog spec needs `E2E_CATALOG_CNI` and `E2E_CATALOG_MINOR`, for example:
+The e2e specs are tagged by name: `[Cilium]`, `[Calico-Chained]`, `[KCP]`, `[Adoption-Cilium]`, `[Adoption-Cilium-Mirror]`, `[Adoption-Calico]` and `[Catalog]`. The mirror spec needs a registry on port 5000 of the host with the Cilium images, as set up in the e2e workflow, and `E2E_MIRROR=true`. The catalog spec needs `E2E_CATALOG_CNI` and `E2E_CATALOG_MINOR`, for example:
 
 ```sh
 E2E_CATALOG_CNI=cilium E2E_CATALOG_MINOR=1.20 make test-e2e GINKGO_FOCUS='\[Catalog\]'

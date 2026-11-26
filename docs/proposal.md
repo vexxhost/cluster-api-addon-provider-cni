@@ -118,5 +118,5 @@ A cluster manager or GitOps setup creates the `ClusterCNI` with the cluster and 
 
 - Unit tests cover the upgrade path, the catalog format and the hooks; every catalog minor is rendered with its real chart.
 - Integration tests run the controller against envtest.
-- End-to-end tests on kind and CAPD cover installing Cilium, upgrading it one minor at a time, a chained Kubernetes upgrade with Calico through the hooks, a cluster without ClusterClass, and taking over Cilium and Calico installed by a ClusterResourceSet the way [magnum-cluster-api](https://github.com/vexxhost/magnum-cluster-api) does it.
+- End-to-end tests on kind and CAPD cover installing Cilium, upgrading it one minor at a time, a chained Kubernetes upgrade with Calico through the hooks, a cluster without ClusterClass, and taking over Cilium (also pulled from a registry mirror) and Calico installed by a ClusterResourceSet the way [magnum-cluster-api](https://github.com/vexxhost/magnum-cluster-api) does it.
 - Every catalog change runs the end-to-end test for each minor it touches.

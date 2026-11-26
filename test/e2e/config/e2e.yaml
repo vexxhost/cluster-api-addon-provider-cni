@@ -73,6 +73,7 @@ providers:
           - sourcePath: ../data/infrastructure-docker/cluster-template-topology.yaml
           - sourcePath: ../data/infrastructure-docker/cluster-template-topology-adoption.yaml
           - sourcePath: ../data/infrastructure-docker/cluster-template-kcp.yaml
+          - sourcePath: ../data/infrastructure-docker/cluster-template-kcp-mirror.yaml
           # Copied from the Cluster API test module by the suite, so it always
           # matches the Cluster API version in go.mod.
           - sourcePath: ../data/infrastructure-docker/clusterclass-quick-start.yaml

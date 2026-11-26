@@ -95,7 +95,7 @@ func kubernetesVersion(minor string) string {
 // createCluster creates a workload cluster from a template flavor and waits
 // until its nodes are ready, which needs a working CNI.
 func (s *cniSpec) createCluster(flavor, kubernetes string, cniSpec map[string]any) {
-	s.createNamedCluster(fmt.Sprintf("%s-%s", s.name, randomSuffix()), flavor, kubernetes, cniSpec)
+	s.createNamedCluster(fmt.Sprintf("%s-%s", s.name, randomSuffix()), flavor, kubernetes, cniSpec, nil)
 }
 
 func randomSuffix() string {
@@ -103,8 +103,11 @@ func randomSuffix() string {
 }
 
 // createNamedCluster is createCluster with a given cluster name.
-func (s *cniSpec) createNamedCluster(name, flavor, kubernetes string, cniSpec map[string]any) {
+func (s *cniSpec) createNamedCluster(name, flavor, kubernetes string, cniSpec map[string]any, extraVars map[string]string) {
 	vars := map[string]string{}
+	for k, v := range extraVars {
+		vars[k] = v
+	}
 	if cniSpec != nil {
 		vars["E2E_CLUSTERCNI_SPEC"] = toJSON(cniSpec)
 	}

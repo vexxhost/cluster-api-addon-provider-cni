@@ -1,0 +1,135 @@
+# A CAPD workload cluster without a ClusterClass and without a ClusterCNI,
+# whose nodes pull from a plain HTTP registry mirror at ${MIRROR_REGISTRY}.
+# The mirror adoption spec installs Cilium from that mirror with a
+# ClusterResourceSet selecting the cluster-uuid label.
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+kind: DevCluster
+metadata:
+  name: "${CLUSTER_NAME}"
+spec:
+  backend:
+    docker:
+      failureDomains:
+        - name: fd1
+          controlPlane: true
+        - name: fd4
+          controlPlane: false
+---
+apiVersion: cluster.x-k8s.io/v1beta2
+kind: Cluster
+metadata:
+  name: "${CLUSTER_NAME}"
+  labels:
+    cluster-uuid: "${CLUSTER_NAME}"
+spec:
+  clusterNetwork:
+    services:
+      cidrBlocks: ["${DOCKER_SERVICE_CIDRS}"]
+    pods:
+      cidrBlocks: ["${DOCKER_POD_CIDRS}"]
+    serviceDomain: "${DOCKER_SERVICE_DOMAIN}"
+  infrastructureRef:
+    apiGroup: infrastructure.cluster.x-k8s.io
+    kind: DevCluster
+    name: "${CLUSTER_NAME}"
+  controlPlaneRef:
+    apiGroup: controlplane.cluster.x-k8s.io
+    kind: KubeadmControlPlane
+    name: "${CLUSTER_NAME}-control-plane"
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+kind: DevMachineTemplate
+metadata:
+  name: "${CLUSTER_NAME}-control-plane"
+spec:
+  template:
+    spec:
+      backend:
+        docker:
+          extraMounts:
+            - containerPath: "/var/run/docker.sock"
+              hostPath: "/var/run/docker.sock"
+          preLoadImages: ${DOCKER_PRELOAD_IMAGES:-[]}
+---
+apiVersion: controlplane.cluster.x-k8s.io/v1beta2
+kind: KubeadmControlPlane
+metadata:
+  name: "${CLUSTER_NAME}-control-plane"
+spec:
+  replicas: ${CONTROL_PLANE_MACHINE_COUNT}
+  version: "${KUBERNETES_VERSION}"
+  machineTemplate:
+    spec:
+      infrastructureRef:
+        apiGroup: infrastructure.cluster.x-k8s.io
+        kind: DevMachineTemplate
+        name: "${CLUSTER_NAME}-control-plane"
+  kubeadmConfigSpec:
+    clusterConfiguration:
+      apiServer:
+        certSANs: [localhost, 127.0.0.1, 0.0.0.0, host.docker.internal]
+    files:
+      - path: /etc/containerd/certs.d/${MIRROR_REGISTRY}/hosts.toml
+        owner: root:root
+        permissions: "0644"
+        content: |
+          server = "http://${MIRROR_REGISTRY}"
+          [host."http://${MIRROR_REGISTRY}"]
+            capabilities = ["pull", "resolve"]
+            skip_verify = true
+---
+apiVersion: infrastructure.cluster.x-k8s.io/v1beta2
+kind: DevMachineTemplate
+metadata:
+  name: "${CLUSTER_NAME}-md-0"
+spec:
+  template:
+    spec:
+      backend:
+        docker:
+          extraMounts:
+            - containerPath: "/var/run/docker.sock"
+              hostPath: "/var/run/docker.sock"
+          preLoadImages: ${DOCKER_PRELOAD_IMAGES:-[]}
+---
+apiVersion: bootstrap.cluster.x-k8s.io/v1beta2
+kind: KubeadmConfigTemplate
+metadata:
+  name: "${CLUSTER_NAME}-md-0"
+spec:
+  template:
+    spec:
+      files:
+        - path: /etc/containerd/certs.d/${MIRROR_REGISTRY}/hosts.toml
+          owner: root:root
+          permissions: "0644"
+          content: |
+            server = "http://${MIRROR_REGISTRY}"
+            [host."http://${MIRROR_REGISTRY}"]
+              capabilities = ["pull", "resolve"]
+              skip_verify = true
+---
+apiVersion: cluster.x-k8s.io/v1beta2
+kind: MachineDeployment
+metadata:
+  name: "${CLUSTER_NAME}-md-0"
+spec:
+  clusterName: "${CLUSTER_NAME}"
+  replicas: ${WORKER_MACHINE_COUNT}
+  selector:
+    matchLabels:
+  template:
+    spec:
+      clusterName: "${CLUSTER_NAME}"
+      version: "${KUBERNETES_VERSION}"
+      bootstrap:
+        configRef:
+          apiGroup: bootstrap.cluster.x-k8s.io
+          kind: KubeadmConfigTemplate
+          name: "${CLUSTER_NAME}-md-0"
+      infrastructureRef:
+        apiGroup: infrastructure.cluster.x-k8s.io
+        kind: DevMachineTemplate
+        name: "${CLUSTER_NAME}-md-0"
+      failureDomain: fd4

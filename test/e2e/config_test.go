@@ -38,6 +38,7 @@ var frameworkVariables = map[string]bool{
 	"WORKER_MACHINE_COUNT":        true,
 	// Set by the specs for every cluster they create.
 	"E2E_CLUSTERCNI_SPEC": true,
+	"MIRROR_REGISTRY":     true,
 }
 
 type e2eConfigFile struct {
