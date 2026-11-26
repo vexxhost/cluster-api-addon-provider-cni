@@ -33,6 +33,11 @@ jobs:
     steps:
       # Pull requests opened with the default token don't run workflows, so
       # the bot pull requests use a GitHub App token.
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@aebdcf6156ab6691adf63218240e476564a1ed4c # v2.23.0
+        with:
+          egress-policy: audit
+
       - uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         id: app-token
         with:
@@ -61,7 +66,7 @@ jobs:
               echo "The catalog workflow installs every updated minor and upgrades to it from the previous minor. This pull request merges once the checks pass."
             fi
           } > "$RUNNER_TEMP/body.md"
-      - uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
+      - uses: step-security/create-pull-request@50c103da2b9ca12cd5bc013fc6931051a5aa872b # v8.1.1
         id: pr
         with:
           token: ${{ steps.app-token.outputs.token }}
