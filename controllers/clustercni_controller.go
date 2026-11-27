@@ -21,6 +21,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/Masterminds/semver/v3"
@@ -62,6 +63,9 @@ type ClusterCNIReconciler struct {
 	ClusterCache     clustercache.ClusterCache
 	Catalogs         catalog.Catalogs
 	WatchFilterValue string
+
+	// crdCache holds rendered CRD charts.
+	crdCache sync.Map
 }
 
 // Changing ownerReferences needs delete on the object and, for
@@ -274,17 +278,18 @@ func (r *ClusterCNIReconciler) reconcile(ctx context.Context, cluster *clusterv1
 		}
 	}
 
+	if err := r.ensureNamespace(ctx, key, cat.Release); err != nil {
+		return ctrl.Result{}, fmt.Errorf("creating the %s namespace: %w", cat.Release.Namespace, err)
+	}
+
 	// Some charts need their CRDs from a separate chart, at the same version,
 	// before their own resources can be created.
-	if crd := cat.CRDChartFor(hop); crd != nil {
-		crdHRP, err := r.applyCRDHelmReleaseProxy(ctx, cluster, cni, cat, crd, hop)
-		if err != nil {
-			return ctrl.Result{}, err
+	if crd := cat.CRDChartFor(hop); crd != nil && cni.Status.CRDVersion != cat.Format(hop) {
+		if err := r.applyCRDs(ctx, key, cni, cat, crd, hop, running); err != nil {
+			setProgress(cni, cat, adopting, observed, target, hop, "the CRDs for ", nil)
+			return ctrl.Result{}, fmt.Errorf("applying the CRDs for %s %s: %w", cat.Type, cat.Format(hop), err)
 		}
-		if !helmReleaseProxyReady(crdHRP) || crdHRP.Spec.Version != cat.Format(hop) {
-			setProgress(cni, cat, adopting, observed, target, hop, "the CRDs for ", crdHRP)
-			return ctrl.Result{}, nil
-		}
+		cni.Status.CRDVersion = cat.Format(hop)
 	}
 
 	hrp, err = r.applyHelmReleaseProxy(ctx, cluster, cni, cat, hop, adopting)

@@ -82,10 +82,16 @@ spec:
               drop:
                 - ALL
           volumeMounts:
+            # Helm writes chart repository indexes here when the controller
+            # renders a CRD chart.
+            - mountPath: /tmp
+              name: tmp
             - mountPath: /tmp/k8s-webhook-server/serving-certs
               name: cert
               readOnly: true
       volumes:
+        - name: tmp
+          emptyDir: {}
         - name: cert
           secret:
             # Written by the cert-manager Certificate in config/certmanager.

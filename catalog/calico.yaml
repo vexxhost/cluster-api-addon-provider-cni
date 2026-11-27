@@ -14,6 +14,10 @@ chart:
 release:
   name: calico
   namespace: tigera-operator
+  # The operator runs on the host network, which the baseline Pod Security
+  # level many clusters enforce doesn't allow.
+  namespaceLabels:
+    pod-security.kubernetes.io/enforce: privileged
 detect:
   - kind: DaemonSet
     namespace: kube-system
@@ -24,8 +28,8 @@ detect:
     name: calico-node
     container: calico-node
 # From Calico 3.32 the chart no longer carries the CRDs of the resources it
-# creates; upstream installs them first from this chart. The operator keeps
-# them up to date afterwards.
+# creates. Upstream renders this chart and applies it with kubectl before
+# installing the operator, and the controller does the same.
 crdChart:
   name: crd.projectcalico.org.v1
   release: calico-crds

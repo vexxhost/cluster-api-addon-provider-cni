@@ -111,9 +111,10 @@ type podState struct {
 	pods       map[types.UID]bool
 }
 
-// daemonSetState records a DaemonSet's generation and pods, to check a
-// takeover changes neither.
-func (s *cniSpec) daemonSetState(namespace, name string) podState {
+// ciliumState records the generation and pods of the Cilium agent DaemonSet,
+// to check a takeover changes neither.
+func (s *cniSpec) ciliumState() podState {
+	namespace, name := metav1.NamespaceSystem, "cilium"
 	workload := s.workload()
 	ds := &appsv1.DaemonSet{}
 	Expect(workload.Get(ctx, client.ObjectKey{Namespace: namespace, Name: name}, ds)).To(Succeed())
@@ -149,7 +150,7 @@ var _ = Describe("Adopting a magnum-cluster-api shaped Cilium [Adoption-Cilium]"
 		By("Creating a cluster that gets Cilium from a ClusterResourceSet")
 		s.createAdoptionCluster("topology-adoption", k8s, "cilium.yaml", manifest, nil)
 		s.expectNetwork()
-		before := s.daemonSetState("kube-system", "cilium")
+		before := s.ciliumState()
 
 		By("Handing Cilium over to a ClusterCNI at its running version")
 		s.createCNI(cniv1.ClusterCNISpec{
@@ -164,7 +165,7 @@ var _ = Describe("Adopting a magnum-cluster-api shaped Cilium [Adoption-Cilium]"
 		s.expectCNI("cilium", running)
 
 		By("Checking the takeover changed neither the agent DaemonSet nor its pods")
-		after := s.daemonSetState("kube-system", "cilium")
+		after := s.ciliumState()
 		Expect(after.generation).To(Equal(before.generation))
 		Expect(after.pods).To(Equal(before.pods))
 		s.expectNetwork()
@@ -300,7 +301,7 @@ var _ = Describe("Adopting Cilium pulled from a registry mirror [Adoption-Cilium
 		By("Creating a cluster whose nodes pull from the mirror and get Cilium from a ClusterResourceSet")
 		s.createAdoptionCluster("kcp-mirror", k8s, "cilium.yaml", manifest, map[string]string{"MIRROR_REGISTRY": mirror})
 		s.expectNetwork()
-		before := s.daemonSetState("kube-system", "cilium")
+		before := s.ciliumState()
 		Expect(agentImage(s)).To(Equal(mirror + "/cilium-cilium:v1.15.3"))
 
 		By("Handing Cilium over with the mirrored images in providerConfig")
@@ -314,7 +315,7 @@ var _ = Describe("Adopting Cilium pulled from a registry mirror [Adoption-Cilium
 		}
 		s.createCNI(cniv1.ClusterCNISpec{Type: "cilium", Version: "1.15.3", ProviderConfig: providerConfig(config)})
 		s.expectCNI("cilium", semver.MustParse("1.15.3"))
-		after := s.daemonSetState("kube-system", "cilium")
+		after := s.ciliumState()
 		Expect(after.generation).To(Equal(before.generation))
 		Expect(after.pods).To(Equal(before.pods))
 		Expect(agentImage(s)).To(Equal(mirror + "/cilium-cilium:v1.15.3"))

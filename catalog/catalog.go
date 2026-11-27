@@ -74,8 +74,9 @@ type Chart struct {
 	Name string `json:"name"`
 }
 
-// CRDChart is a chart in the same repository that installs CRDs the main
-// chart needs before its own resources can be created.
+// CRDChart is a chart in the same repository with CRDs the main chart needs
+// before its own resources can be created. The controller renders it and
+// applies the CRDs itself.
 type CRDChart struct {
 	// Name is the chart name.
 	Name string `json:"name"`
@@ -91,6 +92,9 @@ type CRDChart struct {
 type Release struct {
 	Name      string `json:"name"`
 	Namespace string `json:"namespace"`
+	// NamespaceLabels are set on the release namespace, for example the Pod
+	// Security level the CNI needs.
+	NamespaceLabels map[string]string `json:"namespaceLabels,omitempty"`
 }
 
 // DetectTarget is a workload container whose image tag is the CNI version.

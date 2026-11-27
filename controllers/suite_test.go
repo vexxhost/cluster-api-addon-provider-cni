@@ -26,6 +26,7 @@ import (
 	"testing"
 	"time"
 
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
@@ -68,7 +69,7 @@ func runMain(m *testing.M) int {
 	}
 
 	for _, add := range []func(*runtime.Scheme) error{
-		clientgoscheme.AddToScheme, clusterv1.AddToScheme, addonsv1.AddToScheme, helmv1.AddToScheme, cniv1.AddToScheme,
+		clientgoscheme.AddToScheme, apiextensionsv1.AddToScheme, clusterv1.AddToScheme, addonsv1.AddToScheme, helmv1.AddToScheme, cniv1.AddToScheme,
 	} {
 		if err := add(envScheme); err != nil {
 			panic(err)

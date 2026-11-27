@@ -177,6 +177,13 @@ func TestChangedMinors(t *testing.T) {
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(out).To(Equal(`[]`))
 
+	// A change outside the minors touches every minor.
+	g.Expect(os.WriteFile(filepath.Join(current, "test.yaml"), []byte(strings.Replace(
+		fmt.Sprintf(fixtureCatalog, "https://charts.example.com"), "image: {{ . }}/agent", "image: {{ . }}/agent-v2", 1)), 0o600)).To(Succeed())
+	out, err = changedMinors(base, current)
+	g.Expect(err).ToNot(HaveOccurred())
+	g.Expect(out).To(Equal(`[{"cni":"test","minor":"1.15"},{"cni":"test","minor":"1.16"}]`))
+
 	out, err = changedMinors(filepath.Join(base, "missing"), current)
 	g.Expect(err).ToNot(HaveOccurred())
 	g.Expect(out).To(Equal(`[{"cni":"test","minor":"1.15"},{"cni":"test","minor":"1.16"}]`), "every minor is new without a base")

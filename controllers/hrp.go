@@ -64,6 +64,9 @@ func helmReleaseProxyReady(hrp *helmv1.HelmReleaseProxy) bool {
 
 // releaseMessage returns the HelmReleaseProxy's failure message, if any.
 func releaseMessage(hrp *helmv1.HelmReleaseProxy) string {
+	if hrp == nil {
+		return ""
+	}
 	c := conditions.Get(hrp, helmv1.HelmReleaseReadyCondition)
 	if c == nil || c.Status != "False" || c.Message == "" || hrp.Status.ObservedGeneration != hrp.Generation {
 		return ""
@@ -93,12 +96,6 @@ func (r *ClusterCNIReconciler) applyHelmReleaseProxy(ctx context.Context, cluste
 		return nil, err
 	}
 	return r.ensureHelmReleaseProxy(ctx, cluster, cni, cat, helmReleaseProxyName(cluster), cat.Chart.Name, cat.Release.Name, version, string(rendered), adopting)
-}
-
-// applyCRDHelmReleaseProxy creates or updates the HelmReleaseProxy of the
-// catalog's CRD chart for version.
-func (r *ClusterCNIReconciler) applyCRDHelmReleaseProxy(ctx context.Context, cluster *clusterv1.Cluster, cni *cniv1.ClusterCNI, cat *catalog.Catalog, crd *catalog.CRDChart, version *semver.Version) (*helmv1.HelmReleaseProxy, error) {
-	return r.ensureHelmReleaseProxy(ctx, cluster, cni, cat, helmReleaseProxyName(cluster)+"-crds", crd.Name, crd.Release, version, "", false)
 }
 
 // ensureHelmReleaseProxy creates or updates a HelmReleaseProxy. It is owned by

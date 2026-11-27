@@ -131,6 +131,11 @@ type ClusterCNIStatus struct {
 	// +optional
 	TargetVersion string `json:"targetVersion,omitempty"`
 
+	// crdVersion is the CNI version whose CRDs the controller applied, for
+	// CNIs that ship them in a separate chart.
+	// +optional
+	CRDVersion string `json:"crdVersion,omitempty"`
+
 	// observedGeneration is the latest generation observed by the controller.
 	// +optional
 	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
