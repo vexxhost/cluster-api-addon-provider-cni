@@ -131,8 +131,7 @@ type ClusterCNIStatus struct {
 	// +optional
 	TargetVersion string `json:"targetVersion,omitempty"`
 
-	// crdVersion is the CNI version whose CRDs the controller applied, for
-	// CNIs that ship them in a separate chart.
+	// crdVersion is the CNI version whose CRDs the controller applied last.
 	// +optional
 	CRDVersion string `json:"crdVersion,omitempty"`
 

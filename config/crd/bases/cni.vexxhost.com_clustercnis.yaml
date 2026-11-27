@@ -180,9 +180,8 @@ spec:
                 - type
                 x-kubernetes-list-type: map
               crdVersion:
-                description: |-
-                  crdVersion is the CNI version whose CRDs the controller applied, for
-                  CNIs that ship them in a separate chart.
+                description: crdVersion is the CNI version whose CRDs the controller
+                  applied last.
                 type: string
               observedGeneration:
                 description: observedGeneration is the latest generation observed

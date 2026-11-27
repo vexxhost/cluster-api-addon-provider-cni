@@ -37,18 +37,22 @@ import (
 // fieldOwner is the server-side apply field manager in workload clusters.
 const fieldOwner = "cluster-api-addon-provider-cni"
 
-// applyCRDs installs the CRDs a CNI version needs from the catalog's CRD
-// chart, the way upstream documents it: rendered with Helm and server-side
-// applied. A Helm release can't hold them, because its revision would exceed
-// the size limit of the Secret Helm stores it in.
-func (r *ClusterCNIReconciler) applyCRDs(ctx context.Context, key client.ObjectKey, cni *cniv1.ClusterCNI, cat *catalog.Catalog, crd *catalog.CRDChart, version, kubernetes *semver.Version) error {
+// applyCRDs installs the CRDs a CNI version needs before Helm installs or
+// upgrades its chart: the chart's crds/ directory, which Helm only installs on
+// the first install and never upgrades, and the catalog's CRD chart, if the
+// version needs one. Both are server-side applied, the way upstream documents
+// it for charts whose CRDs don't fit in a Helm release.
+func (r *ClusterCNIReconciler) applyCRDs(ctx context.Context, key client.ObjectKey, cni *cniv1.ClusterCNI, cat *catalog.Catalog, version, kubernetes *semver.Version) error {
 	repoURL := cat.Chart.RepoURL
 	if cni.Spec.ChartRepository != "" {
 		repoURL = cni.Spec.ChartRepository
 	}
-	objs, err := r.crdObjects(repoURL, crd, cat.Release.Namespace, cat.Format(version), kubernetes)
+	objs, err := r.crdObjects(repoURL, cat, version, kubernetes)
 	if err != nil {
 		return err
+	}
+	if len(objs) == 0 {
+		return nil
 	}
 	c, err := r.ClusterCache.GetClient(ctx, key)
 	if err != nil {
@@ -63,25 +67,44 @@ func (r *ClusterCNIReconciler) applyCRDs(ctx context.Context, key client.ObjectK
 	return nil
 }
 
-// crdObjects renders a CRD chart, caching the result since released charts
-// never change.
-func (r *ClusterCNIReconciler) crdObjects(repoURL string, crd *catalog.CRDChart, namespace, version string, kubernetes *semver.Version) ([]unstructured.Unstructured, error) {
-	cacheKey := strings.Join([]string{repoURL, crd.Name, version, fmt.Sprintf("%d.%d", kubernetes.Major(), kubernetes.Minor())}, "|")
+// crdObjects returns the CRDs of a CNI version, caching them since released
+// charts never change.
+func (r *ClusterCNIReconciler) crdObjects(repoURL string, cat *catalog.Catalog, version, kubernetes *semver.Version) ([]unstructured.Unstructured, error) {
+	formatted := cat.Format(version)
+	cacheKey := strings.Join([]string{repoURL, cat.Chart.Name, formatted, fmt.Sprintf("%d.%d", kubernetes.Major(), kubernetes.Minor())}, "|")
 	if objs, ok := r.crdCache.Load(cacheKey); ok {
 		return objs.([]unstructured.Unstructured), nil
 	}
-	ch, err := charts.FetchChart(repoURL, crd.Name, version)
+
+	ch, err := charts.FetchChart(repoURL, cat.Chart.Name, formatted)
 	if err != nil {
 		return nil, err
 	}
-	manifest, err := charts.Render(ch, crd.Release, namespace, "v"+release(kubernetes).String(), nil)
-	if err != nil {
-		return nil, fmt.Errorf("rendering %s %s: %w", crd.Name, version, err)
+	var objs []unstructured.Unstructured
+	for _, crd := range ch.CRDObjects() {
+		parsed, err := utilyaml.ToUnstructured(crd.File.Data)
+		if err != nil {
+			return nil, fmt.Errorf("%s %s: %s: %w", cat.Chart.Name, formatted, crd.Name, err)
+		}
+		objs = append(objs, parsed...)
 	}
-	objs, err := utilyaml.ToUnstructured([]byte(manifest))
-	if err != nil {
-		return nil, err
+
+	if crd := cat.CRDChartFor(version); crd != nil {
+		crdChart, err := charts.FetchChart(repoURL, crd.Name, formatted)
+		if err != nil {
+			return nil, err
+		}
+		manifest, err := charts.Render(crdChart, crd.Release, cat.Release.Namespace, "v"+release(kubernetes).String(), nil)
+		if err != nil {
+			return nil, fmt.Errorf("rendering %s %s: %w", crd.Name, formatted, err)
+		}
+		parsed, err := utilyaml.ToUnstructured([]byte(manifest))
+		if err != nil {
+			return nil, err
+		}
+		objs = append(objs, parsed...)
 	}
+
 	r.crdCache.Store(cacheKey, objs)
 	return objs, nil
 }

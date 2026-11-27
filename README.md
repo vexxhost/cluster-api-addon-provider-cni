@@ -100,6 +100,8 @@ my-cluster   cilium   1.18.17   1.19.11   False   Upgrading  3d
 
 The controller upgrades the CNI along the catalog's upgrade path. Before leaving a minor version it moves to that minor's latest patch, then it moves one minor at a time (for both Cilium and Calico), waiting for each Helm release to finish rolling out.
 
+Before each step, the controller server-side applies the CRDs that version needs, from the chart's `crds/` directory and from the separate CRD chart some versions use (Calico 3.32 and later). Helm installs a chart's `crds/` directory only once and never upgrades it, so without this an upgrade to a version with new resources would fail.
+
 During a Kubernetes upgrade, the CNI has to support the new version before the control plane moves:
 
 - **With the lifecycle hooks**, Cluster API asks before each control plane step. The hook announces the step's version on the `ClusterCNI`, the controller moves the CNI to a version that supports both the current and the next Kubernetes version, and the hook lets the step proceed once it runs. Workers wait until the CNI rollout is done. If the catalog has no path for a step, `BeforeClusterUpgrade` refuses the upgrade with an explanation.

@@ -76,7 +76,7 @@ type Chart struct {
 
 // CRDChart is a chart in the same repository with CRDs the main chart needs
 // before its own resources can be created. The controller renders it and
-// applies the CRDs itself.
+// applies the CRDs itself, like the main chart's crds/ directory.
 type CRDChart struct {
 	// Name is the chart name.
 	Name string `json:"name"`
