@@ -1,12 +1,12 @@
 # Runs the catalog e2e spec for every catalog minor a pull request adds or
 # changes: it installs the minor on the newest Kubernetes version it supports
-# and upgrades to it from the previous minor.
+# and upgrades to it from the previous minor. It runs on every pull request so
+# that "catalog e2e" can be a required check; without catalog changes it
+# passes right away.
 name: catalog
 
 on:
   pull_request:
-    paths:
-      - catalog/*.yaml
 
 permissions:
   contents: read
@@ -73,3 +73,19 @@ jobs:
           path: _artifacts
           if-no-files-found: ignore
           retention-days: 7
+
+  # A fixed name to require: passes when every catalog e2e job passed or none
+  # was needed.
+  summary:
+    name: catalog e2e
+    needs: [changed, e2e]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check the catalog e2e results
+        env:
+          CHANGED: ${{ needs.changed.result }}
+          E2E: ${{ needs.e2e.result }}
+        run: |
+          echo "changed: $CHANGED, e2e: $E2E"
+          [ "$CHANGED" = success ] && { [ "$E2E" = success ] || [ "$E2E" = skipped ]; }
