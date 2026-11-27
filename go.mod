@@ -6,8 +6,8 @@ require (
 	github.com/Masterminds/semver/v3 v3.4.0
 	github.com/Masterminds/sprig/v3 v3.3.0
 	github.com/distribution/reference v0.6.0
-	github.com/onsi/ginkgo/v2 v2.32.0
-	github.com/onsi/gomega v1.42.1
+	github.com/onsi/ginkgo/v2 v2.34.0
+	github.com/onsi/gomega v1.44.0
 	github.com/spf13/pflag v1.1.0
 	go.yaml.in/yaml/v3 v3.0.5
 	helm.sh/helm/v3 v3.21.0
@@ -19,7 +19,7 @@ require (
 	k8s.io/klog/v2 v2.140.0
 	k8s.io/utils v0.0.0-20260210185600-b8788abfbbc2
 	sigs.k8s.io/cluster-api v1.14.3
-	sigs.k8s.io/cluster-api-addon-provider-helm v0.6.4
+	sigs.k8s.io/cluster-api-addon-provider-helm v0.6.6
 	sigs.k8s.io/cluster-api/api v1.14.3
 	sigs.k8s.io/cluster-api/test v1.14.3
 	sigs.k8s.io/controller-runtime v0.24.1
