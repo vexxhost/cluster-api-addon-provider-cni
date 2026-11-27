@@ -60,7 +60,8 @@ Naming the `ClusterCNI` after its Cluster makes one CNI per cluster a property o
 
 Each CNI is one YAML file compiled into the controller:
 
-- the chart and release to install;
+- the chart and release to install, and labels for the release namespace;
+- optionally, a separate chart with the CRDs some versions need first;
 - how to detect an install made without the controller (a workload and container whose image tag is the version);
 - a values template, rendered with the Cluster, the generic fields and the version;
 - for every minor version: its latest patch, the Kubernetes versions upstream tests it with (with a link to the source), and optionally which versions it can be upgraded from.
@@ -76,7 +77,9 @@ On every change to the `ClusterCNI`, its Cluster or its HelmReleaseProxy, the co
 3. finds the running CNI version: from its HelmReleaseProxy, or by detecting an existing install;
 4. resolves the target version from `spec.version` and the Kubernetes versions, refusing downgrades;
 5. picks the next step on the upgrade path: the detected version for a takeover, then the latest patch of the running minor, then the furthest allowed minor;
-6. writes one HelmReleaseProxy per cluster for that step, with Helm's take-ownership option, and waits for CAAPH to deploy it.
+6. creates the release namespace with the labels the catalog asks for, such as the Pod Security level;
+7. server-side applies the step's CRDs, from the chart's `crds/` directory (which Helm never upgrades) and from the catalog's CRD chart when the version has one (a Helm release can't hold Calico's, as it exceeds the size of the Secret Helm stores it in);
+8. writes one HelmReleaseProxy per cluster for that step, with Helm's take-ownership option, and waits for CAAPH to deploy it.
 
 Only the target version is checked against Kubernetes ranges. Intermediate steps follow the upgrade rule alone, so a cluster that already runs a CNI outside its tested range can still move forward.
 

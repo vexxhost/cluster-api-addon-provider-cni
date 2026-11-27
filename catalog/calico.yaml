@@ -29,7 +29,9 @@ detect:
     container: calico-node
 # From Calico 3.32 the chart no longer carries the CRDs of the resources it
 # creates. Upstream renders this chart and applies it with kubectl before
-# installing the operator, and the controller does the same.
+# installing the operator, and the controller does the same. Up to 3.31 they
+# are in the chart's crds/ directory, which the controller applies too, since
+# Helm never upgrades it.
 crdChart:
   name: crd.projectcalico.org.v1
   release: calico-crds

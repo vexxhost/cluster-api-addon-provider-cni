@@ -282,10 +282,10 @@ func (r *ClusterCNIReconciler) reconcile(ctx context.Context, cluster *clusterv1
 		return ctrl.Result{}, fmt.Errorf("creating the %s namespace: %w", cat.Release.Namespace, err)
 	}
 
-	// Some charts need their CRDs from a separate chart, at the same version,
-	// before their own resources can be created.
-	if crd := cat.CRDChartFor(hop); crd != nil && cni.Status.CRDVersion != cat.Format(hop) {
-		if err := r.applyCRDs(ctx, key, cni, cat, crd, hop, running); err != nil {
+	// Helm can't be trusted with the CRDs: it never upgrades a chart's crds/
+	// directory, and some charts move their CRDs to a separate chart.
+	if cni.Status.CRDVersion != cat.Format(hop) {
+		if err := r.applyCRDs(ctx, key, cni, cat, hop, running); err != nil {
 			setProgress(cni, cat, adopting, observed, target, hop, "the CRDs for ", nil)
 			return ctrl.Result{}, fmt.Errorf("applying the CRDs for %s %s: %w", cat.Type, cat.Format(hop), err)
 		}

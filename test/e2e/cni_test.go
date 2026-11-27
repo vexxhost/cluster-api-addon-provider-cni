@@ -179,21 +179,34 @@ var _ = Describe("A catalog minor [Catalog]", func() {
 		Expect(cat).ToNot(BeNil(), "unknown CNI %s", cniType)
 		target := s.target(cniType, minor, nil)
 
-		var k8s string
-		for _, m := range []string{"1.37", "1.36", "1.35", "1.34", "1.33", "1.32"} {
-			if v := kubernetesVersion(m); cat.Supports(target, semver.MustParse(v)) {
-				k8s = v
-				break
-			}
-		}
-		Expect(k8s).ToNot(BeEmpty(), "no Kubernetes version in the e2e config supports %s %s", cniType, minor)
-
 		var previous *semver.Version
 		for i, m := range cat.Minors {
 			if m.Minor == minor && i > 0 {
 				previous = semver.MustParse(cat.Minors[i-1].Version)
 			}
 		}
+
+		// The newest Kubernetes version that supports the minor and, when
+		// possible, the previous minor it upgrades from.
+		var k8s, fallback string
+		for _, m := range []string{"1.37", "1.36", "1.35", "1.34", "1.33", "1.32"} {
+			v := kubernetesVersion(m)
+			if !cat.Supports(target, semver.MustParse(v)) {
+				continue
+			}
+			if fallback == "" {
+				fallback = v
+			}
+			if previous == nil || cat.Supports(previous, semver.MustParse(v)) {
+				k8s = v
+				break
+			}
+		}
+		if k8s == "" {
+			k8s = fallback
+		}
+		Expect(k8s).ToNot(BeEmpty(), "no Kubernetes version in the e2e config supports %s %s", cniType, minor)
+
 		if previous == nil {
 			By("Installing " + cniType + " " + cat.Format(target) + " on Kubernetes " + k8s)
 			s.createCluster("topology", k8s, map[string]any{"type": cniType, "version": target.String()})
