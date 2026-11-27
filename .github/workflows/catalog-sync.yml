@@ -43,7 +43,7 @@ jobs:
           token: ${{ steps.app-token.outputs.token }}
       - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
-          go-version: "1.26"
+          go-version: "1.27"
           check-latest: true
       - name: Update the catalog
         env:
