@@ -15,8 +15,9 @@ limitations under the License.
 */
 
 // Package charts reads Helm chart repositories and renders charts offline
-// with the Helm SDK. The catalog tests, the e2e fixtures and the catalog-sync
-// tool use it; the controller itself leaves Helm to CAAPH.
+// with the Helm SDK. The controller uses it for charts that only carry CRDs,
+// which it applies itself; everything else is installed by CAAPH. The catalog
+// tests, the e2e fixtures and the catalog-sync tool use it too.
 package charts
 
 import (
@@ -24,6 +25,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"helm.sh/helm/v3/pkg/action"
 	"helm.sh/helm/v3/pkg/chart"
@@ -31,8 +33,30 @@ import (
 	"helm.sh/helm/v3/pkg/chartutil"
 	"helm.sh/helm/v3/pkg/cli"
 	"helm.sh/helm/v3/pkg/getter"
+	"helm.sh/helm/v3/pkg/registry"
 	"helm.sh/helm/v3/pkg/repo"
 )
+
+// FetchChart downloads a chart version from an HTTP or OCI chart repository.
+func FetchChart(repoURL, name, version string) (*chart.Chart, error) {
+	if strings.HasPrefix(repoURL, "oci://") {
+		c, err := registry.NewClient()
+		if err != nil {
+			return nil, err
+		}
+		ref := strings.TrimSuffix(strings.TrimPrefix(repoURL, "oci://"), "/") + "/" + name + ":" + version
+		res, err := c.Pull(ref)
+		if err != nil {
+			return nil, fmt.Errorf("pulling %s: %w", ref, err)
+		}
+		return loader.LoadArchive(bytes.NewReader(res.Chart.Data))
+	}
+	r, err := LoadRepo(repoURL)
+	if err != nil {
+		return nil, err
+	}
+	return r.Fetch(name, version)
+}
 
 // Repo is a downloaded chart repository index.
 type Repo struct {

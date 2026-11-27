@@ -128,20 +128,20 @@ func TestFreshInstall(t *testing.T) {
 	cni := newClusterCNI(ctx, t, cluster, cniv1.ClusterCNISpec{Type: "calico"})
 
 	// Auto mode picks the newest Calico for the envtest Kubernetes version,
-	// whose CRDs come from a separate chart that is installed first.
+	// whose CRDs come from a separate chart the controller applies first, in a
+	// namespace labeled for the operator's Pod Security level.
 	var crdVersion string
 	g.Eventually(func(g Gomega) {
-		crds := getNamedHRP(ctx, g, cluster, cluster.Name+"-cni-crds")
-		g.Expect(crds.Spec.ChartName).To(Equal("crd.projectcalico.org.v1"))
-		g.Expect(crds.Spec.ReleaseName).To(Equal("calico-crds"))
-		g.Expect(crds.Spec.ReleaseNamespace).To(Equal("tigera-operator"))
-		crdVersion = crds.Spec.Version
-		g.Expect(readyReason(ctx, g, cni)).To(Equal(cniv1.InstallingReason))
-	}, eventually...).Should(Succeed())
-	g.Consistently(func() error {
-		return envClient.Get(ctx, client.ObjectKey{Namespace: cluster.Namespace, Name: cluster.Name + "-cni"}, &helmv1.HelmReleaseProxy{})
-	}, "2s", "200ms").ShouldNot(Succeed(), "the operator chart waits for its CRDs")
-	markNamedDeployed(ctx, t, cluster, cluster.Name+"-cni-crds", crdVersion)
+		got := &cniv1.ClusterCNI{}
+		g.Expect(envClient.Get(ctx, client.ObjectKeyFromObject(cni), got)).To(Succeed())
+		g.Expect(got.Status.CRDVersion).ToNot(BeEmpty())
+		crdVersion = got.Status.CRDVersion
+	}, "120s", "500ms").Should(Succeed())
+	crd := &apiextensionsv1.CustomResourceDefinition{}
+	g.Expect(envClient.Get(ctx, client.ObjectKey{Name: "installations.operator.tigera.io"}, crd)).To(Succeed())
+	ns := &corev1.Namespace{}
+	g.Expect(envClient.Get(ctx, client.ObjectKey{Name: "tigera-operator"}, ns)).To(Succeed())
+	g.Expect(ns.Labels).To(HaveKeyWithValue("pod-security.kubernetes.io/enforce", "privileged"))
 
 	g.Eventually(func(g Gomega) {
 		hrp := getHRP(ctx, g, cluster)

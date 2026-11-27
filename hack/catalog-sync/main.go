@@ -31,6 +31,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -201,21 +202,24 @@ type changedMinor struct {
 }
 
 // changedMinors returns, as a JSON list, every minor in dir that is missing
-// from baseDir or has a different version there.
+// from baseDir or differs there. When anything else in a catalog changes,
+// such as its values template, every minor of that catalog counts as changed.
 func changedMinors(baseDir, dir string) (string, error) {
-	base, err := loadVersions(baseDir)
+	base, err := loadCatalogs(baseDir)
 	if err != nil {
 		return "", err
 	}
-	current, err := loadVersions(dir)
+	current, err := loadCatalogs(dir)
 	if err != nil {
 		return "", err
 	}
 	changed := []changedMinor{}
 	for _, cniType := range sortedKeys(current) {
-		for _, minor := range sortedKeys(current[cniType]) {
-			if base[cniType][minor] != current[cniType][minor] {
-				changed = append(changed, changedMinor{CNI: cniType, Minor: minor})
+		cur, old := current[cniType], base[cniType]
+		all := old == nil || !sameJSON(withoutMinors(cur), withoutMinors(old))
+		for _, m := range cur.Minors {
+			if all || !slices.ContainsFunc(old.Minors, func(o catalog.Minor) bool { return sameJSON(o, m) }) {
+				changed = append(changed, changedMinor{CNI: cniType, Minor: m.Minor})
 			}
 		}
 	}
@@ -223,27 +227,29 @@ func changedMinors(baseDir, dir string) (string, error) {
 	return string(out), err
 }
 
-// loadVersions maps CNI type and minor to version for the catalogs in dir.
-// A missing directory has no versions.
-func loadVersions(dir string) (map[string]map[string]string, error) {
-	out := map[string]map[string]string{}
+// sameJSON compares the fields of two catalog values that come from the file.
+func sameJSON(a, b any) bool {
+	ja, errA := json.Marshal(a)
+	jb, errB := json.Marshal(b)
+	return errA == nil && errB == nil && bytes.Equal(ja, jb)
+}
+
+// withoutMinors returns a catalog's settings other than its minors.
+func withoutMinors(c *catalog.Catalog) catalog.Catalog {
+	out := *c
+	out.Minors = nil
+	return out
+}
+
+// loadCatalogs loads the catalogs in dir. A missing directory has none.
+func loadCatalogs(dir string) (catalog.Catalogs, error) {
 	if dir == "" {
-		return out, nil
+		return catalog.Catalogs{}, nil
 	}
 	if _, err := os.Stat(dir); os.IsNotExist(err) {
-		return out, nil
+		return catalog.Catalogs{}, nil
 	}
-	catalogs, err := catalog.Load(os.DirFS(dir))
-	if err != nil {
-		return nil, err
-	}
-	for cniType, c := range catalogs {
-		out[cniType] = map[string]string{}
-		for _, m := range c.Minors {
-			out[cniType][m.Minor] = m.Version
-		}
-	}
-	return out, nil
+	return catalog.Load(os.DirFS(dir))
 }
 
 func sortedKeys[V any](m map[string]V) []string {
